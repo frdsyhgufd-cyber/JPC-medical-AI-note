@@ -84,12 +84,10 @@ export const generateMedicalNote = async (
   referenceNotes: MedicalRecord[] = [],
   extraInfo: string = ''
 ) => {
-  // 優先檢查 process.env.API_KEY
   const apiKey = process.env.API_KEY;
 
   if (!apiKey || apiKey === 'undefined' || apiKey.length < 10) {
-    console.error("Gemini API Key 缺失。目前的 API_KEY 變數為:", apiKey);
-    return "⚠️ 系統設定錯誤：API 金鑰缺失。請檢查 Netlify 環境變數是否設定為 API_KEY 並重新部署。";
+    return "⚠️ 系統設定錯誤：API 金鑰缺失。請檢查 Netlify 環境變數是否正確設定。";
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -151,10 +149,10 @@ ${formatInstruction}
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: promptText, // 修正：直接傳入字串或使用 { parts: [{ text: ... }] }
+      model: 'gemini-flash-lite-latest', // 改用 Lite 模型，通常配額更高且更穩定
+      contents: [{ parts: [{ text: promptText }] }],
       config: {
-        systemInstruction: systemInstruction, // 修正：直接傳入字串
+        systemInstruction: systemInstruction,
         temperature: 0.7,
       }
     });
@@ -165,7 +163,13 @@ ${formatInstruction}
 
     return response.text;
   } catch (error: any) {
-    console.error("Gemini API 呼叫發生錯誤:", error);
-    return `⚠️ 生成紀錄時發生錯誤。請確認您的 API 金鑰是否有效。詳細錯誤：${error.message || '未知錯誤'}`;
+    console.error("Gemini API Error:", error);
+    
+    // 專門針對 429 資源耗盡錯誤的提示
+    if (error.message?.includes('429') || error.message?.includes('RESOURCE_EXHAUSTED')) {
+      return "⚠️ 您的 API 使用配額已達上限。請等待 1~5 分鐘後再試，或考慮到 Google AI Studio 綁定信用卡以提升配額（仍在額度內免費）。";
+    }
+
+    return `⚠️ 生成紀錄時發生錯誤。詳細錯誤：${error.message || '請確認 API Key 有效'}`;
   }
 };
