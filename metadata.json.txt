@@ -1,0 +1,5 @@
+{
+  "name": "嘉南療養院病歷寫作輔助系統",
+  "description": "衛生福利部嘉南療養院專屬，協助專科護理師快速生成高品質精神科住院病歷紀錄。",
+  "requestFramePermissions": []
+}
