@@ -84,11 +84,12 @@ export const generateMedicalNote = async (
   referenceNotes: MedicalRecord[] = [],
   extraInfo: string = ''
 ) => {
+  // 優先檢查 process.env.API_KEY
   const apiKey = process.env.API_KEY;
 
   if (!apiKey || apiKey === 'undefined' || apiKey.length < 10) {
-    console.error("Gemini API Key 缺失或無效，目前抓取到的值為:", apiKey);
-    return "⚠️ 系統設定錯誤：API 金鑰缺失。請檢查 Netlify 環境變數並重新部署。";
+    console.error("Gemini API Key 缺失。目前的 API_KEY 變數為:", apiKey);
+    return "⚠️ 系統設定錯誤：API 金鑰缺失。請檢查 Netlify 環境變數是否設定為 API_KEY 並重新部署。";
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -101,38 +102,35 @@ export const generateMedicalNote = async (
   switch (type) {
     case RecordType.PROGRESS_NOTE:
       formatInstruction = `
-        【特定格式要求】
-        1. 第一行必須是「病程紀錄 (Progress Note)」。
-        2. 採用 SOAP 格式。
-        3. S: 個案主訴。
-        4. O: 極簡 MSE/PE 異常發現。
-        5. A: 僅列出診斷名稱。
-        6. P: 以「純條列式」列出處置。
-      `;
+【特定格式要求】
+1. 第一行必須是「病程紀錄 (Progress Note)」。
+2. 採用 SOAP 格式。
+3. S: 個案主訴。
+4. O: 極簡 MSE/PE 異常發現。
+5. A: 僅列出診斷名稱。
+6. P: 以「純條列式」列出處置。`;
       break;
     case RecordType.OFF_DUTY_SUMMARY:
       formatInstruction = `
-        【特定格式要求】
-        1. 第一行必須是「Off Duty note」。
-        2. 禁止使用 SOAP。
-        3. 主要使用繁體中文。
-        ${admissionDateStr ? `4. 提及病患於 ${admissionDateStr} 入院。` : ''}
-      `;
+【特定格式要求】
+1. 第一行必須是「Off Duty note」。
+2. 禁止使用 SOAP。
+3. 主要使用繁體中文。
+${admissionDateStr ? `4. 提及病患於 ${admissionDateStr} 入院。` : ''}`;
       break;
     case RecordType.DISCHARGE_NOTE:
       formatInstruction = `
-        【特定格式要求】
-        1. 第一行必須是「Discharge Note」。
-        2. 禁止使用 SOAP。
-        3. 總結自 ${admissionDateStr || '入院'} 以來的完整病程。
-        4. 結尾包含後續安置計畫。
-      `;
+【特定格式要求】
+1. 第一行必須是「Discharge Note」。
+2. 禁止使用 SOAP。
+3. 總結自 ${admissionDateStr || '入院'} 以來的完整病程。
+4. 結尾包含後續安置計畫。`;
       break;
     default:
       formatInstruction = `第一行標示「${type}」，禁止使用 SOAP 標籤。`;
   }
 
-  const systemInstruction = "你是一個在台灣嘉南療養院服務的專業精神科醫療助理。請以專業、簡潔的醫護口吻撰寫內容。絕對禁止使用雙星號 (**) 粗體語法。";
+  const systemInstruction = "你是一個在台灣嘉南療養院服務的專業精神科醫療助理。請以專業、簡潔的醫護口吻撰寫內容。絕對禁止使用雙星號 (**) 粗體語法。請使用繁體中文，但醫學專有名詞可使用英文。";
 
   const psychiatricDiag = getFullDiagnosisList(patient.diagnosis?.psychiatric, patient.diagnosis?.psychiatricOther);
   const medicalDiag = getFullDiagnosisList(patient.diagnosis?.medical, patient.diagnosis?.medicalOther);
@@ -154,9 +152,9 @@ ${formatInstruction}
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: [{ parts: [{ text: promptText }] }],
+      contents: promptText, // 修正：直接傳入字串或使用 { parts: [{ text: ... }] }
       config: {
-        systemInstruction: { parts: [{ text: systemInstruction }] },
+        systemInstruction: systemInstruction, // 修正：直接傳入字串
         temperature: 0.7,
       }
     });
@@ -167,11 +165,7 @@ ${formatInstruction}
 
     return response.text;
   } catch (error: any) {
-    console.error("Gemini API 呼叫發生錯誤詳細資訊:", error);
-    // 如果錯誤訊息包含 404，可能是模型名稱不支援
-    if (error.message?.includes('404')) {
-      return "⚠️ 錯誤：模型名稱不正確或 API 無法存取該模型。";
-    }
-    return "⚠️ 生成紀錄時發生錯誤。請確認您的 API 金鑰是否有效，並檢查瀏覽器控制台 (F12) 的 Error 訊息。";
+    console.error("Gemini API 呼叫發生錯誤:", error);
+    return `⚠️ 生成紀錄時發生錯誤。請確認您的 API 金鑰是否有效。詳細錯誤：${error.message || '未知錯誤'}`;
   }
 };
