@@ -87,7 +87,7 @@ export const generateMedicalNote = async (
   const apiKey = process.env.API_KEY;
 
   if (!apiKey || apiKey === 'undefined' || apiKey.length < 10) {
-    return "⚠️ 系統設定錯誤：API 金鑰缺失。請檢查 Netlify 環境變數是否正確設定。";
+    return "⚠️ 系統設定錯誤：API 金鑰缺失。請檢查專案環境變數是否設定正確。";
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -128,7 +128,7 @@ ${admissionDateStr ? `4. 提及病患於 ${admissionDateStr} 入院。` : ''}`;
       formatInstruction = `第一行標示「${type}」，禁止使用 SOAP 標籤。`;
   }
 
-  const systemInstruction = "你是一個在台灣嘉南療養院服務的專業精神科醫療助理。請以專業、簡潔的醫護口吻撰寫內容。絕對禁止使用雙星號 (**) 粗體語法。請使用繁體中文，但醫學專有名詞可使用英文。";
+  const systemInstruction = "你是一個在台灣嘉南療養院服務的專業精神科醫療助理。請以專業、簡潔的醫護口吻撰寫內容。不要使用粗體 (**) 語法。請使用繁體中文，醫學術語可用英文。";
 
   const psychiatricDiag = getFullDiagnosisList(patient.diagnosis?.psychiatric, patient.diagnosis?.psychiatricOther);
   const medicalDiag = getFullDiagnosisList(patient.diagnosis?.medical, patient.diagnosis?.medicalOther);
@@ -138,38 +138,34 @@ ${admissionDateStr ? `4. 提及病患於 ${admissionDateStr} 入院。` : ''}`;
 - 姓名：${patient.name.charAt(0)}Ｏ${patient.name.length > 2 ? patient.name.charAt(patient.name.length-1) : ''}
 - 診斷：${psychiatricDiag} / ${medicalDiag}
 - 臨床重點：${patient.clinicalFocus || '穩定觀察中'}
-- MSE 評估結果：\n${formatMSEData(patient.mse)}
-- PE & NE 檢查結果：\n${formatPEData(patient.pe)}
-${extraInfo ? `- 補充資訊 (原因/計畫)：${extraInfo}` : ''}
+- MSE 評估：\n${formatMSEData(patient.mse)}
+- PE & NE 檢查：\n${formatPEData(patient.pe)}
+${extraInfo ? `- 補充資訊：${extraInfo}` : ''}
 
-【生成任務】
-請根據上述臨床素材，依照以下規範生成一份 ${type}：
+【任務】
+生成一份專業的 ${type}：
 ${formatInstruction}
   `;
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-flash-lite-latest', // 改用 Lite 模型，通常配額更高且更穩定
-      contents: [{ parts: [{ text: promptText }] }],
+      model: 'gemini-3-flash-preview',
+      contents: promptText,
       config: {
         systemInstruction: systemInstruction,
         temperature: 0.7,
       }
     });
 
-    if (!response || !response.text) {
-      throw new Error("模型回傳內容為空");
-    }
-
-    return response.text;
+    return response.text || "⚠️ 模型未能生成有效內容。";
   } catch (error: any) {
     console.error("Gemini API Error:", error);
     
-    // 專門針對 429 資源耗盡錯誤的提示
+    // 專門處理 429 資源耗盡
     if (error.message?.includes('429') || error.message?.includes('RESOURCE_EXHAUSTED')) {
-      return "⚠️ 您的 API 使用配額已達上限。請等待 1~5 分鐘後再試，或考慮到 Google AI Studio 綁定信用卡以提升配額（仍在額度內免費）。";
+      return "⚠️ 頻率限制：免費版 API 每分鐘呼叫次數有限。請等待約 1 分鐘後再按一次生成。若頻繁發生，建議至 Google AI Studio 開啟計費計畫（每月固定免費額度依然存在，但頻率上限會大幅提升）。";
     }
 
-    return `⚠️ 生成紀錄時發生錯誤。詳細錯誤：${error.message || '請確認 API Key 有效'}`;
+    return `⚠️ 生成紀錄失敗：${error.message || '請確認 API 金鑰有效'}`;
   }
 };
