@@ -87,9 +87,10 @@ export const generateMedicalNote = async (
   const apiKey = process.env.API_KEY;
 
   if (!apiKey || apiKey === 'undefined' || apiKey.length < 10) {
-    return "⚠️ 系統設定錯誤：API 金鑰缺失。請檢查專案環境變數是否設定正確。";
+    return "⚠️ 系統設定錯誤：API 金鑰缺失。請檢查 Netlify 環境變數設定。";
   }
 
+  // 每次呼叫都新建實例，確保讀取最新金鑰狀態
   const ai = new GoogleGenAI({ apiKey });
   
   let formatInstruction = "";
@@ -100,52 +101,45 @@ export const generateMedicalNote = async (
   switch (type) {
     case RecordType.PROGRESS_NOTE:
       formatInstruction = `
-【特定格式要求】
-1. 第一行必須是「病程紀錄 (Progress Note)」。
-2. 採用 SOAP 格式。
-3. S: 個案主訴。
-4. O: 極簡 MSE/PE 異常發現。
-5. A: 僅列出診斷名稱。
-6. P: 以「純條列式」列出處置。`;
+【格式】
+1. 第一行：病程紀錄 (Progress Note)
+2. 採用 SOAP 格式 (S, O, A, P 分開標註)
+3. 繁體中文為主，醫學術語可用英文
+4. 嚴禁使用粗體 ** 語法`;
       break;
     case RecordType.OFF_DUTY_SUMMARY:
       formatInstruction = `
-【特定格式要求】
-1. 第一行必須是「Off Duty note」。
-2. 禁止使用 SOAP。
-3. 主要使用繁體中文。
-${admissionDateStr ? `4. 提及病患於 ${admissionDateStr} 入院。` : ''}`;
+【格式】
+1. 第一行：Off Duty note
+2. 敘述體，禁止使用 SOAP
+${admissionDateStr ? `3. 提及病患於 ${admissionDateStr} 入院` : ''}
+4. 嚴禁使用粗體 ** 語法`;
       break;
     case RecordType.DISCHARGE_NOTE:
       formatInstruction = `
-【特定格式要求】
-1. 第一行必須是「Discharge Note」。
-2. 禁止使用 SOAP。
-3. 總結自 ${admissionDateStr || '入院'} 以來的完整病程。
-4. 結尾包含後續安置計畫。`;
+【格式】
+1. 第一行：Discharge Note
+2. 總結完整病程與後續計畫
+3. 嚴禁使用粗體 ** 語法`;
       break;
     default:
-      formatInstruction = `第一行標示「${type}」，禁止使用 SOAP 標籤。`;
+      formatInstruction = `標題為「${type}」，嚴禁使用粗體語法。`;
   }
 
-  const systemInstruction = "你是一個在台灣嘉南療養院服務的專業精神科醫療助理。請以專業、簡潔的醫護口吻撰寫內容。不要使用粗體 (**) 語法。請使用繁體中文，醫學術語可用英文。";
-
-  const psychiatricDiag = getFullDiagnosisList(patient.diagnosis?.psychiatric, patient.diagnosis?.psychiatricOther);
-  const medicalDiag = getFullDiagnosisList(patient.diagnosis?.medical, patient.diagnosis?.medicalOther);
+  const systemInstruction = "你是一位專業的精神科醫療助理。請以簡潔的醫療筆記格式撰寫內容，禁止使用雙星號 (**) 粗體語法。";
 
   const promptText = `
-【病患基本資料】
-- 姓名：${patient.name.charAt(0)}Ｏ${patient.name.length > 2 ? patient.name.charAt(patient.name.length-1) : ''}
-- 診斷：${psychiatricDiag} / ${medicalDiag}
-- 臨床重點：${patient.clinicalFocus || '穩定觀察中'}
-- MSE 評估：\n${formatMSEData(patient.mse)}
-- PE & NE 檢查：\n${formatPEData(patient.pe)}
-${extraInfo ? `- 補充資訊：${extraInfo}` : ''}
+【病患資料】
+姓名：${patient.name.charAt(0)}Ｏ${patient.name.length > 1 ? patient.name.charAt(patient.name.length-1) : ''}
+診斷：${getFullDiagnosisList(patient.diagnosis?.psychiatric, patient.diagnosis?.psychiatricOther)}
+MSE 內容：\n${formatMSEData(patient.mse)}
+PE/NE 內容：\n${formatPEData(patient.pe)}
+臨床重點：${patient.clinicalFocus || '穩定'}
+${extraInfo ? `補充原因/計畫：${extraInfo}` : ''}
 
 【任務】
 生成一份專業的 ${type}：
-${formatInstruction}
-  `;
+${formatInstruction}`;
 
   try {
     const response = await ai.models.generateContent({
@@ -157,15 +151,12 @@ ${formatInstruction}
       }
     });
 
-    return response.text || "⚠️ 模型未能生成有效內容。";
+    return response.text || "⚠️ 模型回傳空內容";
   } catch (error: any) {
-    console.error("Gemini API Error:", error);
-    
-    // 專門處理 429 資源耗盡
+    console.error("Gemini Error:", error);
     if (error.message?.includes('429') || error.message?.includes('RESOURCE_EXHAUSTED')) {
-      return "⚠️ 頻率限制：免費版 API 每分鐘呼叫次數有限。請等待約 1 分鐘後再按一次生成。若頻繁發生，建議至 Google AI Studio 開啟計費計畫（每月固定免費額度依然存在，但頻率上限會大幅提升）。";
+      return "⚠️ 偵測到 API 配額已用盡。建議醫師：\n1. 稍等 1 分鐘後再試。\n2. 至 Google AI Studio 綁定信用卡提升配額（仍在免費額度內，$0元）。";
     }
-
-    return `⚠️ 生成紀錄失敗：${error.message || '請確認 API 金鑰有效'}`;
+    return `⚠️ 生成失敗：${error.message}`;
   }
 };
