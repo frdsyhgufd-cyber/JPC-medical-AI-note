@@ -12,13 +12,13 @@ const getFullDiagnosisList = (list: string[] | undefined, otherText: string | un
 const formatMSEData = (mse: any) => {
   if (!mse) return "尚未進行 MSE 評估。";
   
-  const joinArr = (val: any) => Array.isArray(val) ? val.join(', ') : (val || '無');
   const formatValue = (val: any, other: string | undefined) => {
     if (val === 'others') return other || '其他';
     if (Array.isArray(val)) {
+      if (val.length === 0) return '正常/無異常';
       return val.map(v => v === 'others' ? (other || '其他') : v).join(', ');
     }
-    return val || '無';
+    return val || '正常/無異常';
   };
 
   const sections = [];
@@ -42,14 +42,13 @@ const formatMSEData = (mse: any) => {
     const timeStatus = ori?.time ? '異常' : '正常';
     const placeStatus = ori?.place ? '異常' : '正常';
     const personStatus = ori?.person ? '異常' : '正常';
-    
-    sections.push(`認知功能: 定向感(時/地/人): ${timeStatus}/${placeStatus}/${personStatus}, 注意力: ${formatValue(mse.cognition.attention, mse.cognition.attentionOther)}, 記憶力: ${joinArr(mse.cognition.memory)}, 抽象思考: ${formatValue(mse.cognition.abstraction, mse.cognition.other)}`);
+    sections.push(`[認知功能] 定向感(時/地/人): ${timeStatus}/${placeStatus}/${personStatus}, 注意力: ${formatValue(mse.cognition.attention, mse.cognition.attentionOther)}, 記憶力: ${Array.isArray(mse.cognition.memory) ? mse.cognition.memory.join(', ') : '正常'}, 抽象思考: ${formatValue(mse.cognition.abstraction, mse.cognition.other)}`);
   }
   if (mse.insight) {
     sections.push(`[病識感] ${mse.insight}`);
   }
   if (mse.risk) {
-    sections.push(`[風險評估] ${joinArr(mse.risk)}${mse.riskOther ? ', 其他風險: '+mse.riskOther : ''}`);
+    sections.push(`[風險評估] ${Array.isArray(mse.risk) ? mse.risk.join(', ') : '無'}${mse.riskOther ? ', 其他風險: '+mse.riskOther : ''}`);
   }
   
   return sections.join('\n');
@@ -85,8 +84,14 @@ export const generateMedicalNote = async (
   referenceNotes: MedicalRecord[] = [],
   extraInfo: string = ''
 ) => {
-  // 每次調用時創建新實例以確保獲取最新的環境變量
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = process.env.API_KEY;
+
+  if (!apiKey || apiKey === 'undefined' || apiKey.length < 10) {
+    console.error("Gemini API Key 缺失或無效，目前抓取到的值為:", apiKey);
+    return "⚠️ 系統設定錯誤：API 金鑰缺失。請檢查 Netlify 環境變數並重新部署。";
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   
   let formatInstruction = "";
   const admissionDateStr = patient.admissionDate 
@@ -96,67 +101,77 @@ export const generateMedicalNote = async (
   switch (type) {
     case RecordType.PROGRESS_NOTE:
       formatInstruction = `
-        1. 開頭第一行必須是「病程紀錄 (Progress Note)」。
-        2. 採用「SOAP 格式」。
-        3. S (Subjective): 僅記錄個案主訴。
-        4. O (Objective): 極簡描述 MSE/PE。只准列出異常發現，忽略正常項目。
-        5. A (Assessment): 絕對僅能列出「診斷名稱」。嚴禁包含病情分析文字。
-        6. P (Plan): 必須以「純條列式」列出處置計畫（如 1., 2., 3...）。嚴禁散文描述。
+        【特定格式要求】
+        1. 第一行必須是「病程紀錄 (Progress Note)」。
+        2. 採用 SOAP 格式。
+        3. S: 個案主訴。
+        4. O: 極簡 MSE/PE 異常發現。
+        5. A: 僅列出診斷名稱。
+        6. P: 以「純條列式」列出處置。
       `;
       break;
     case RecordType.OFF_DUTY_SUMMARY:
       formatInstruction = `
-        1. 嚴格禁止使用 SOAP 標籤。
-        2. 開頭第一行必須是「Off Duty note」。
-        3. 內容生成請主要使用「中文」。
-        ${admissionDateStr ? `4. 必須在內容開頭提及病患於 ${admissionDateStr} 入院住院治療。` : ''}
+        【特定格式要求】
+        1. 第一行必須是「Off Duty note」。
+        2. 禁止使用 SOAP。
+        3. 主要使用繁體中文。
+        ${admissionDateStr ? `4. 提及病患於 ${admissionDateStr} 入院。` : ''}
       `;
       break;
     case RecordType.DISCHARGE_NOTE:
       formatInstruction = `
-        1. 嚴格禁止使用 SOAP 標籤。
-        2. 開頭第一行必須是「Discharge Note」。
-        3. 採用「高度專業醫療整合風格」撰寫。
-        ${admissionDateStr ? `4. 內容首段必須提及病患自 ${admissionDateStr} 入院以來之病程總結。` : ''}
-        5. 結尾必須結合後續的安置計畫。
+        【特定格式要求】
+        1. 第一行必須是「Discharge Note」。
+        2. 禁止使用 SOAP。
+        3. 總結自 ${admissionDateStr || '入院'} 以來的完整病程。
+        4. 結尾包含後續安置計畫。
       `;
       break;
     default:
-      formatInstruction = `開頭請標示紀錄名稱，嚴格禁止 SOAP 標籤。`;
+      formatInstruction = `第一行標示「${type}」，禁止使用 SOAP 標籤。`;
   }
 
-  const systemInstruction = `
-    你是一個在嘉南療養院服務的資深醫療AI助手。
-    【核心規範】
-    1. 格式絕對隔離：只有病程紀錄 (Progress Note) 可使用 SOAP 標籤，其餘一律禁止。
-    2. 禁止符號：輸出內容中絕對不得包含雙星號粗體語法。
-    3. 專業度：維持資深精神科醫師/護理師口吻。
-  `;
+  const systemInstruction = "你是一個在台灣嘉南療養院服務的專業精神科醫療助理。請以專業、簡潔的醫護口吻撰寫內容。絕對禁止使用雙星號 (**) 粗體語法。";
 
   const psychiatricDiag = getFullDiagnosisList(patient.diagnosis?.psychiatric, patient.diagnosis?.psychiatricOther);
   const medicalDiag = getFullDiagnosisList(patient.diagnosis?.medical, patient.diagnosis?.medicalOther);
 
-  const patientContext = `
-【臨床素材】
+  const promptText = `
+【病患基本資料】
+- 姓名：${patient.name.charAt(0)}Ｏ${patient.name.length > 2 ? patient.name.charAt(patient.name.length-1) : ''}
 - 診斷：${psychiatricDiag} / ${medicalDiag}
 - 臨床重點：${patient.clinicalFocus || '穩定觀察中'}
-- MSE：\n${formatMSEData(patient.mse)}
-- PE & NE：\n${formatPEData(patient.pe)}
-${extraInfo ? `- 附加說明/原因/安置計畫：${extraInfo}` : ''}
+- MSE 評估結果：\n${formatMSEData(patient.mse)}
+- PE & NE 檢查結果：\n${formatPEData(patient.pe)}
+${extraInfo ? `- 補充資訊 (原因/計畫)：${extraInfo}` : ''}
+
+【生成任務】
+請根據上述臨床素材，依照以下規範生成一份 ${type}：
+${formatInstruction}
   `;
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: patientContext + "\n\n" + formatInstruction,
+      contents: [{ parts: [{ text: promptText }] }],
       config: {
-        systemInstruction,
-        temperature: 0.8,
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        temperature: 0.7,
       }
     });
-    return response.text || "生成失敗。";
+
+    if (!response || !response.text) {
+      throw new Error("模型回傳內容為空");
+    }
+
+    return response.text;
   } catch (error: any) {
-    console.error("Gemini API Error:", error);
-    return "生成發生錯誤，請稍後再試。";
+    console.error("Gemini API 呼叫發生錯誤詳細資訊:", error);
+    // 如果錯誤訊息包含 404，可能是模型名稱不支援
+    if (error.message?.includes('404')) {
+      return "⚠️ 錯誤：模型名稱不正確或 API 無法存取該模型。";
+    }
+    return "⚠️ 生成紀錄時發生錯誤。請確認您的 API 金鑰是否有效，並檢查瀏覽器控制台 (F12) 的 Error 訊息。";
   }
 };
