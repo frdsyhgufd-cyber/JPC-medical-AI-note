@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { Patient, RecordType, MedicalRecord } from "./types";
 
@@ -80,33 +79,15 @@ const formatPEData = (pe: any) => {
   return sections.join('\n');
 };
 
-const generateWithRetry = async (ai: any, params: any, retries = 3, delay = 2000) => {
-  for (let i = 0; i < retries; i++) {
-    try {
-      return await ai.models.generateContent(params);
-    } catch (error: any) {
-      const isQuotaError = error.message?.includes('429') || error.status === 429;
-      if (isQuotaError && i < retries - 1) {
-        const waitTime = delay * Math.pow(2, i);
-        console.warn(`Gemini API 429 錯誤，正在進行第 ${i + 1} 次重試，等待 ${waitTime}ms...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        continue;
-      }
-      throw error;
-    }
-  }
-};
-
 export const generateMedicalNote = async (
   patient: Patient,
   type: RecordType,
   referenceNotes: MedicalRecord[] = [],
   extraInfo: string = ''
 ) => {
-  // 直接使用提供的 API Key
-  const ai = new GoogleGenAI({ apiKey: "gen-lang-client-0336749694" });
-  const lastSameTypeRecord = referenceNotes.find(r => r.type === type);
-
+  // 每次調用時創建新實例以確保獲取最新的環境變量
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
   let formatInstruction = "";
   const admissionDateStr = patient.admissionDate 
     ? `民國 ${patient.admissionDate.year} 年 ${patient.admissionDate.month} 月 ${patient.admissionDate.day} 日`
@@ -123,7 +104,6 @@ export const generateMedicalNote = async (
         6. P (Plan): 必須以「純條列式」列出處置計畫（如 1., 2., 3...）。嚴禁散文描述。
       `;
       break;
-
     case RecordType.OFF_DUTY_SUMMARY:
       formatInstruction = `
         1. 嚴格禁止使用 SOAP 標籤。
@@ -132,64 +112,15 @@ export const generateMedicalNote = async (
         ${admissionDateStr ? `4. 必須在內容開頭提及病患於 ${admissionDateStr} 入院住院治療。` : ''}
       `;
       break;
-
     case RecordType.DISCHARGE_NOTE:
       formatInstruction = `
         1. 嚴格禁止使用 SOAP 標籤。
         2. 開頭第一行必須是「Discharge Note」。
         3. 採用「高度專業醫療整合風格」撰寫。
         ${admissionDateStr ? `4. 內容首段必須提及病患自 ${admissionDateStr} 入院以來之病程總結。` : ''}
-        5. 請系統性地整合住院期間的所有病程紀錄 (Progress Notes) 與治療重點。
-        6. 內容必須包含：入院主訴摘要、住院期間病情演變過程、重要藥物調整之反應、以及各項復健治療成效評估。
-        7. 必須以專業、客觀且具備醫學邏輯的口吻描述。
-        8. 結尾必須結合後續的安置計畫。
+        5. 結尾必須結合後續的安置計畫。
       `;
       break;
-
-    case RecordType.SUPPORTIVE_PSYCHOTHERAPY:
-      formatInstruction = `
-        1. 嚴格禁止使用 SOAP 標籤。
-        2. 開頭第一行必須是「支持性心理治療紀錄」。
-        3. 內容必須「極度簡短」，總字數嚴格限制在 150 字以內。
-        4. 結構規範：
-           (a) 治療目標：僅能列出「一個」核心目標。
-           (b) 治療內容：採條列式（最多 3 點），敘述必須精簡。
-           (c) 效果評估：敘述必須簡短（如：mild effect, effective, 可接受, 部分配合改善等）。
-      `;
-      break;
-
-    case RecordType.PSYCHOTHERAPY:
-      formatInstruction = `
-        1. 嚴格禁止使用 SOAP 標籤。
-        2. 開頭第一行必須是「特殊心理治療紀錄」。
-        3. 描述個案心理動力、互動過程與治療技巧。
-      `;
-      break;
-
-    case RecordType.SPECIAL_HANDLING:
-      formatInstruction = `
-        1. 開頭第一行必須是「精神科住院病人特別處理紀錄」。
-        2. 嚴格禁止使用 SOAP 標籤。
-        3. 生成內容應展現施予「特別處理」之醫療合理性，架構如下：
-           (a) 【特別處理原因】：分析個案目前受精神症狀（如：${patient.mse?.thought.content.join('/')}、幻覺、易怒情緒或不配合治療行為）之影響，如何導致其具備潛在之「攻擊、干擾或自傷之虞」。
-           (b) 【臨床處置內容】：描述治療團隊提供的密集照護計畫（如：密切觀察行為、加強心理支持、調整藥物、或採取必要的限制措施）。
-           (c) 【預期目標】：預防危險行為發生並確保病房環境安全。
-        4. 連結邏輯：請嘗試將個案當前 MSE 的異常項目（如：躁動、被害妄想、不合作）與風險評估進行邏輯連結，若症狀與風險明顯無關則維持一般專業描述。
-      `;
-      break;
-
-    case RecordType.WEEKLY_SUMMARY:
-      formatInstruction = `1. 第一行必須是「Weekly Summary」。2. 禁止 SOAP。`;
-      break;
-    
-    case RecordType.MONTHLY_SUMMARY:
-      formatInstruction = `1. 第一行必須是「Monthly Summary」。2. 禁止 SOAP。`;
-      break;
-
-    case RecordType.PHYSIO_PSYCHO_EXAM:
-      formatInstruction = `1. 第一行「生理心理功能檢查紀錄」。2. 禁止 SOAP。`;
-      break;
-
     default:
       formatInstruction = `開頭請標示紀錄名稱，嚴格禁止 SOAP 標籤。`;
   }
@@ -197,11 +128,9 @@ export const generateMedicalNote = async (
   const systemInstruction = `
     你是一個在嘉南療養院服務的資深醫療AI助手。
     【核心規範】
-    1. 格式絕對隔離：只有病程紀錄 (Progress Note) 可使用 SOAP 標籤，其餘紀錄一律禁止。
-    2. 禁止符號：輸出內容中絕對不得包含「**」粗體語法。
-    3. 特別處理紀錄：必須強調「症狀 -> 風險 -> 處置」的邏輯鏈，展現醫療必要性。
-    4. 專業度：維持資深精神科醫師/護理師口吻，僅使用正式醫學術語。
-    5. 重點：如果提供住院日期，Discharge Note 與 Off Duty Note 必須精確標註。
+    1. 格式絕對隔離：只有病程紀錄 (Progress Note) 可使用 SOAP 標籤，其餘一律禁止。
+    2. 禁止符號：輸出內容中絕對不得包含雙星號粗體語法。
+    3. 專業度：維持資深精神科醫師/護理師口吻。
   `;
 
   const psychiatricDiag = getFullDiagnosisList(patient.diagnosis?.psychiatric, patient.diagnosis?.psychiatricOther);
@@ -210,31 +139,19 @@ export const generateMedicalNote = async (
   const patientContext = `
 【臨床素材】
 - 診斷：${psychiatricDiag} / ${medicalDiag}
-${admissionDateStr ? `- 住院日期：${admissionDateStr}` : ''}
 - 臨床重點：${patient.clinicalFocus || '穩定觀察中'}
 - MSE：\n${formatMSEData(patient.mse)}
 - PE & NE：\n${formatPEData(patient.pe)}
 ${extraInfo ? `- 附加說明/原因/安置計畫：${extraInfo}` : ''}
-
-${lastSameTypeRecord ? `【前次紀錄供差異化】\n${lastSameTypeRecord.content}` : ''}
-  `;
-
-  const wordLimit = (type === RecordType.OFF_DUTY_SUMMARY || type === RecordType.DISCHARGE_NOTE) ? 600 : (type === RecordType.SUPPORTIVE_PSYCHOTHERAPY ? 150 : 400);
-
-  const prompt = `
-    請生成正式的「${type}」。
-    規範細節：
-    ${formatInstruction}
-    限制：${wordLimit} 字以內，不含日期，禁止使用「**」粗體符號。
   `;
 
   try {
-    const response = await generateWithRetry(ai, {
+    const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: patientContext + "\n\n" + prompt,
+      contents: patientContext + "\n\n" + formatInstruction,
       config: {
         systemInstruction,
-        temperature: 0.85,
+        temperature: 0.8,
       }
     });
     return response.text || "生成失敗。";
