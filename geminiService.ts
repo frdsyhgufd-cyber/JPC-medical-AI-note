@@ -89,6 +89,9 @@ export const generateMedicalNote = async (
     RecordType.PHYSIO_PSYCHO_EXAM
   ].includes(type);
 
+  const psychDiag = getFullDiagnosisList(patient.diagnosis?.psychiatric, patient.diagnosis?.psychiatricOther);
+  const medDiag = getFullDiagnosisList(patient.diagnosis?.medical, patient.diagnosis?.medicalOther);
+
   let formatInstruction = "";
   switch (type) {
     case RecordType.PROGRESS_NOTE:
@@ -96,8 +99,8 @@ export const generateMedicalNote = async (
 【格式要求】
 1. 採用 SOAP 格式
 2. S: 描述病患主觀訴求
-3. O: 簡短摘要 MSE 與 PE/NE，不要展開細節
-4. A: 僅寫出診斷名稱，禁止任何補充說明或重複描述 O 的內容
+3. O: 簡短摘要 MSE 與 PE/NE，不要展開過多細節
+4. A: 僅列出診斷名稱，必須同時包含「精神科診斷」與「內外科診斷」，禁止任何補充說明或重複描述 O 的內容
 5. P: 列出 3-5 點治療計畫 (嚴禁超過 5 點)`;
       break;
     case RecordType.SPECIAL_HANDLING:
@@ -110,7 +113,7 @@ export const generateMedicalNote = async (
   const systemInstruction = `你是一位精神科醫療寫作專家。
 【基本準則】
 1. 嚴禁幻覺：禁止發明病患引句、對話或資料未提及的症狀。
-2. 嚴禁擅自增加護理細節：除非資料明確記載，禁止寫入具體監控頻率(如每15分巡房)或餵食計畫。
+2. 嚴禁擅自增加護理細節：除非資料明確記載，禁止寫入具體監控頻率或餵食計畫。
 3. 證據基礎：所有推論必須基於提供的 MSE/PE 資料。
 4. 內容多樣性：新紀錄必須與前次紀錄有 30% 以上的差異化（包含句型與描述重點）。
 5. 字數嚴格限制：${needsLengthLimit ? '總字數絕對禁止超過 400 個中文字。' : ''}
@@ -118,7 +121,8 @@ export const generateMedicalNote = async (
 
   const promptText = `
 【病患現況】
-診斷：${getFullDiagnosisList(patient.diagnosis?.psychiatric, patient.diagnosis?.psychiatricOther)}
+精神科診斷：${psychDiag}
+內外科診斷：${medDiag}
 臨床重點：${patient.clinicalFocus || '穩定'}
 MSE：\n${formatMSEData(patient.mse)}
 PE/NE：\n${formatPEData(patient.pe)}
@@ -137,7 +141,7 @@ ${formatInstruction}`;
       contents: promptText,
       config: {
         systemInstruction: systemInstruction,
-        temperature: 0.85, // 稍微提高隨機性以確保 30% 差異
+        temperature: 0.85, 
       }
     });
 
