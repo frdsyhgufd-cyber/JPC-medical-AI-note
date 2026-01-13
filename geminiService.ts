@@ -11,6 +11,7 @@ const getFullDiagnosisList = (list: string[] | undefined, otherText: string | un
 
 const formatMSEData = (mse: any) => {
   if (!mse) return "尚未進行 MSE 評估。";
+  
   const formatValue = (val: any, other: string | undefined) => {
     if (val === 'others') return other || '其他';
     if (Array.isArray(val)) {
@@ -19,25 +20,47 @@ const formatMSEData = (mse: any) => {
     }
     return val || '正常/無異常';
   };
+
   const sections = [];
-  if (mse.appearance) sections.push(`[外觀] ${formatValue(mse.appearance.cleanliness, mse.appearance.cleanlinessOther)}, 合作: ${formatValue(mse.appearance.cooperation, mse.appearance.cooperationOther)}`);
-  if (mse.speech) sections.push(`[言語] ${formatValue(mse.speech.speed, mse.speech.speedOther)}, ${formatValue(mse.speech.volume, mse.speech.volumeOther)}`);
-  if (mse.mood) sections.push(`[情緒] 主觀: ${formatValue(mse.mood.subjective, mse.mood.other)}, 客觀: ${formatValue(mse.mood.objective, mse.mood.objectiveOther)}`);
-  if (mse.thought) sections.push(`[思維] 過程: ${formatValue(mse.thought.process, mse.thought.processOther)}, 內容: ${formatValue(mse.thought.content, mse.thought.other)}`);
-  if (mse.perception) sections.push(`[知覺] ${formatValue(mse.perception.hallucinations, mse.perception.other)}`);
-  if (mse.cognition) sections.push(`[認知] 定向感: ${mse.cognition.orientation?.time ? '時間異常 ' : ''}${mse.cognition.orientation?.place ? '地點異常 ' : ''}${mse.cognition.orientation?.person ? '人物異常' : '正常'}`);
-  if (mse.insight) sections.push(`[病識感] ${mse.insight}`);
-  if (mse.risk) sections.push(`[風險] ${Array.isArray(mse.risk) ? mse.risk.join(', ') : '無'}`);
+  if (mse.appearance) {
+    sections.push(`[外觀] 整潔: ${formatValue(mse.appearance.cleanliness, mse.appearance.cleanlinessOther)}, 合作: ${formatValue(mse.appearance.cooperation, mse.appearance.cooperationOther)}, 精神運動: ${formatValue(mse.appearance.psychomotor, mse.appearance.other)}`);
+  }
+  if (mse.speech) {
+    sections.push(`[言語] 速度/音量: ${formatValue(mse.speech.speed, mse.speech.speedOther)}/${formatValue(mse.speech.volume, mse.speech.volumeOther)}, 連貫性: ${formatValue(mse.speech.coherence, mse.speech.other)}`);
+  }
+  if (mse.mood) {
+    sections.push(`[情緒情感] ${formatValue(mse.mood.subjective, mse.mood.other)} / ${formatValue(mse.mood.objective, mse.mood.objectiveOther)}`);
+  }
+  if (mse.thought) {
+    sections.push(`[思維] 邏輯: ${formatValue(mse.thought.process, mse.thought.processOther)}, 妄想: ${formatValue(mse.thought.content, mse.thought.other)}`);
+  }
+  if (mse.perception) {
+    sections.push(`[知覺] 幻覺: ${formatValue(mse.perception.hallucinations, mse.perception.other)}`);
+  }
+  if (mse.cognition) {
+    const ori = mse.cognition.orientation;
+    sections.push(`[認知] 定向感: ${ori?.time?'時':''}${ori?.place?'地':''}${ori?.person?'人':''}異常, 注意力: ${formatValue(mse.cognition.attention, mse.cognition.attentionOther)}`);
+  }
+  if (mse.insight) {
+    sections.push(`[病識感] ${mse.insight}`);
+  }
+  if (mse.risk) {
+    sections.push(`[風險] ${Array.isArray(mse.risk) ? mse.risk.join(', ') : '無'}`);
+  }
+  
   return sections.join('\n');
 };
 
 const formatPEData = (pe: any) => {
-  if (!pe) return "尚未進行 PE 評估。";
+  if (!pe) return "無異常。";
   const formatValue = (val: any, other: string | undefined) => {
-    if (!val || (Array.isArray(val) && val.length === 0)) return '無異常';
-    return Array.isArray(val) ? val.map(v => v === 'others' ? (other || '其他') : v).join(', ') : (val === 'others' ? (other || '其他') : val);
+    if (!val || (Array.isArray(val) && val.length === 0)) return '無特定異常';
+    if (Array.isArray(val)) return val.join(', ');
+    return val;
   };
-  return `[意識] ${formatValue(pe.conscious, pe.consciousOther)}\n[HEENT] ${formatValue(pe.heent, pe.heentOther)}\n[神經] ${formatValue(pe.ne, pe.neOther)}`;
+  return `意識: ${formatValue(pe.conscious, pe.consciousOther)}, 
+          神經學: ${formatValue(pe.ne, pe.neOther)}, 
+          其餘系統: 正常`;
 };
 
 export const generateMedicalNote = async (
@@ -47,46 +70,82 @@ export const generateMedicalNote = async (
   extraInfo: string = ''
 ) => {
   const apiKey = process.env.API_KEY;
-
   if (!apiKey || apiKey === 'undefined' || apiKey.length < 10) {
-    return "⚠️ 偵測不到 API 金鑰。請確認您已在 Netlify 設定 API_KEY 環境變數，並「重新點擊 Deploy」讓設定生效。";
+    return "⚠️ 系統錯誤：未偵測到 API 金鑰，請檢查 Netlify 設定。";
   }
 
-  // 初始化 Gemini 3 Flash
   const ai = new GoogleGenAI({ apiKey });
   
-  const promptText = `你是一位專業的精神科醫護助理。
-請根據以下病患資料撰寫一份 ${type}。
-病患：${patient.name.charAt(0)}Ｏ${patient.name.length > 2 ? patient.name.charAt(patient.name.length-1) : ''}
-診斷：${getFullDiagnosisList(patient.diagnosis?.psychiatric, patient.diagnosis?.psychiatricOther)}
-MSE：${formatMSEData(patient.mse)}
-PE：${formatPEData(patient.pe)}
-臨床重點：${patient.clinicalFocus || '穩定'}
-${extraInfo ? `補充計畫：${extraInfo}` : ''}
+  // 取得前一次同類型的紀錄內容
+  const lastRecordOfSameType = referenceNotes
+    .filter(r => r.type === type)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
 
+  const needsLengthLimit = [
+    RecordType.PROGRESS_NOTE,
+    RecordType.SPECIAL_HANDLING,
+    RecordType.SUPPORTIVE_PSYCHOTHERAPY,
+    RecordType.PSYCHOTHERAPY,
+    RecordType.PHYSIO_PSYCHO_EXAM
+  ].includes(type);
+
+  let formatInstruction = "";
+  switch (type) {
+    case RecordType.PROGRESS_NOTE:
+      formatInstruction = `
 【格式要求】
-1. 禁止使用粗體語法 (**)。
-2. 以醫學專業術語為主，繁體中文與英文交雜。
-3. ${type === RecordType.PROGRESS_NOTE ? '請使用 SOAP 格式。' : '請直接撰寫病歷摘要。'}`;
+1. 採用 SOAP 格式
+2. S: 描述病患主觀訴求
+3. O: 簡短摘要 MSE 與 PE/NE，不要展開細節
+4. A: 僅寫出診斷名稱，禁止任何補充說明或重複描述 O 的內容
+5. P: 列出 3-5 點治療計畫 (嚴禁超過 5 點)`;
+      break;
+    case RecordType.SPECIAL_HANDLING:
+      formatInstruction = `針對病患目前的 MSE 異常（如被害妄想、躁動）推論必要之處置，禁止發明資料中未提及的暴力行為。`;
+      break;
+    default:
+      formatInstruction = `專業醫療筆記格式。`;
+  }
+
+  const systemInstruction = `你是一位精神科醫療寫作專家。
+【基本準則】
+1. 嚴禁幻覺：禁止發明病患引句、對話或資料未提及的症狀。
+2. 嚴禁擅自增加護理細節：除非資料明確記載，禁止寫入具體監控頻率(如每15分巡房)或餵食計畫。
+3. 證據基礎：所有推論必須基於提供的 MSE/PE 資料。
+4. 內容多樣性：新紀錄必須與前次紀錄有 30% 以上的差異化（包含句型與描述重點）。
+5. 字數嚴格限制：${needsLengthLimit ? '總字數絕對禁止超過 400 個中文字。' : ''}
+6. 禁止使用粗體語法 (**)。`;
+
+  const promptText = `
+【病患現況】
+診斷：${getFullDiagnosisList(patient.diagnosis?.psychiatric, patient.diagnosis?.psychiatricOther)}
+臨床重點：${patient.clinicalFocus || '穩定'}
+MSE：\n${formatMSEData(patient.mse)}
+PE/NE：\n${formatPEData(patient.pe)}
+${extraInfo ? `補充資訊：${extraInfo}` : ''}
+
+【對照組：前次同類型紀錄內容】
+${lastRecordOfSameType ? lastRecordOfSameType.content : '無前次紀錄'}
+
+【任務】
+生成一份 ${type}。請確保內容與前次紀錄有明顯差異，且遵守所有禁令與格式要求：
+${formatInstruction}`;
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: promptText,
       config: {
-        systemInstruction: "你是一位在台灣工作的精神科專業醫療人員，撰寫內容必須嚴謹且符合醫療規範。嚴禁使用 markdown 粗體字元。",
-        temperature: 0.7,
+        systemInstruction: systemInstruction,
+        temperature: 0.85, // 稍微提高隨機性以確保 30% 差異
       }
     });
 
-    return response.text || "⚠️ 模型沒有回傳文字，請稍後重試。";
+    return response.text || "⚠️ API 回傳空內容。";
   } catch (error: any) {
-    console.error("API 呼叫詳細錯誤:", error);
-    
-    if (error.message?.includes('429') || error.message?.includes('RESOURCE_EXHAUSTED')) {
-      return "⚠️ 仍然出現頻率限制 (429)。\n\n【解決對策】\n1. 請確認您在 Netlify 設定變數後，有重新執行「Clear cache and deploy site」。\n2. 若您剛改為付費，請換一個新的 API Key 試試，有時舊 Key 的權限同步會卡住。";
+    if (error.message?.includes('429')) {
+      return "⚠️ 頻率限制中，請稍候 1 分鐘後再試。";
     }
-
-    return `⚠️ 生成紀錄失敗: ${error.message}`;
+    return `⚠️ 生成失敗：${error.message}`;
   }
 };
