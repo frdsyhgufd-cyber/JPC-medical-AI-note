@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { 
@@ -21,6 +22,7 @@ const AdminPanel: React.FC = () => {
 
   const ROLE_PRIORITY: Record<string, number> = {
     [UserRole.RESIDENT]: 1,
+    [UserRole.FELLOW]: 1.5,
     [UserRole.NP]: 2,
     [UserRole.PA]: 3,
     [UserRole.ADMIN]: 4
@@ -64,6 +66,7 @@ const AdminPanel: React.FC = () => {
     switch (role) {
       case UserRole.NP: return '專科護理師';
       case UserRole.RESIDENT: return '住院醫師';
+      case UserRole.FELLOW: return '研究員 (Fellow)';
       case UserRole.PA: return '醫師助理';
       default: return '未知';
     }
@@ -125,6 +128,7 @@ const AdminPanel: React.FC = () => {
             <select value={newRole} onChange={(e) => setNewRole(e.target.value as UserRole)} className="w-full p-2 border rounded">
               <option value={UserRole.NP}>專科護理師</option>
               <option value={UserRole.RESIDENT}>住院醫師</option>
+              <option value={UserRole.FELLOW}>研究員 (Fellow)</option>
               <option value={UserRole.PA}>醫師助理</option>
             </select>
           </div>
@@ -152,6 +156,7 @@ const AdminPanel: React.FC = () => {
                   <td className="p-3 border-b">
                     <span className={`px-2 py-1 rounded text-xs font-bold ${
                       user.role === UserRole.RESIDENT ? 'bg-purple-100 text-purple-700' :
+                      user.role === UserRole.FELLOW ? 'bg-indigo-100 text-indigo-700' :
                       user.role === UserRole.PA ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
                     }`}>
                       {getRoleLabel(user.role)}
