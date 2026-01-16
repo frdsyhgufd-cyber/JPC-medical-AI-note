@@ -3,6 +3,7 @@ export enum UserRole {
   ADMIN = 'ADMIN',
   NP = 'NP',           // 專科護理師
   RESIDENT = 'RESIDENT', // 住院醫師
+  FELLOW = 'FELLOW',     // 研究員
   PA = 'PA'            // 醫師助理
 }
 
@@ -31,6 +32,8 @@ export interface Patient {
   clinicalFocus?: string;
   mse?: MSEData;
   pe?: PEData; 
+  hasDisabilityCertificate?: boolean; // 是否有身心障礙手冊
+  hasCatastrophicIllnessCard?: boolean; // 是否有重大傷病卡
 }
 
 export interface DiagnosisData {
@@ -103,4 +106,3 @@ export interface MedicalRecord {
   content: string;
   createdAt: string; 
 }
-
