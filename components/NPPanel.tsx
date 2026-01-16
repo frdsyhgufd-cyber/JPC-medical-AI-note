@@ -33,7 +33,9 @@ const NPPanel: React.FC<NPPanelProps> = ({ user, onSelectPatient }) => {
     bed: '',
     gender: 'male',
     birthYearROC: undefined,
-    admissionDate: undefined
+    admissionDate: undefined,
+    hasDisabilityCertificate: false,
+    hasCatastrophicIllnessCard: false
   });
 
   const fetchPatients = async () => {
@@ -80,7 +82,12 @@ const NPPanel: React.FC<NPPanelProps> = ({ user, onSelectPatient }) => {
         });
       }
       
-      setFormData({ name: '', ward: '', bed: '', gender: 'male', birthYearROC: undefined, admissionDate: undefined });
+      setFormData({ 
+        name: '', ward: '', bed: '', gender: 'male', 
+        birthYearROC: undefined, admissionDate: undefined,
+        hasDisabilityCertificate: false,
+        hasCatastrophicIllnessCard: false 
+      });
       setShowAddForm(false);
       setEditingPatient(null);
       fetchPatients();
@@ -138,7 +145,6 @@ const NPPanel: React.FC<NPPanelProps> = ({ user, onSelectPatient }) => {
       return;
     }
     
-    // 限制正整數
     let validNum = Math.max(1, num);
     if (field === 'month') validNum = Math.min(12, validNum);
     if (field === 'day') validNum = Math.min(31, validNum);
@@ -176,7 +182,12 @@ const NPPanel: React.FC<NPPanelProps> = ({ user, onSelectPatient }) => {
         <button 
           onClick={() => {
             setEditingPatient(null);
-            setFormData({ name: '', ward: '', bed: '', gender: 'male', birthYearROC: undefined, admissionDate: undefined });
+            setFormData({ 
+              name: '', ward: '', bed: '', gender: 'male', 
+              birthYearROC: undefined, admissionDate: undefined,
+              hasDisabilityCertificate: false,
+              hasCatastrophicIllnessCard: false
+            });
             setShowAddForm(!showAddForm);
           }}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg shadow hover:bg-blue-700 transition"
@@ -235,6 +246,30 @@ const NPPanel: React.FC<NPPanelProps> = ({ user, onSelectPatient }) => {
                 onChange={(e) => setFormData({...formData, birthYearROC: parseInt(e.target.value) || undefined})}
                 placeholder="例如: 80"
               />
+            </div>
+          </div>
+
+          <div className="border-t pt-4">
+            <label className="block text-sm font-bold mb-2 text-blue-800">身分註記 (勾選)</label>
+            <div className="flex gap-6 p-3 bg-slate-50 rounded-lg border">
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700 cursor-pointer">
+                <input 
+                  type="checkbox"
+                  checked={formData.hasDisabilityCertificate || false}
+                  onChange={(e) => setFormData({...formData, hasDisabilityCertificate: e.target.checked})}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+                領有身心障礙手冊
+              </label>
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700 cursor-pointer">
+                <input 
+                  type="checkbox"
+                  checked={formData.hasCatastrophicIllnessCard || false}
+                  onChange={(e) => setFormData({...formData, hasCatastrophicIllnessCard: e.target.checked})}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+                領有重大傷病卡
+              </label>
             </div>
           </div>
 
@@ -303,7 +338,13 @@ const NPPanel: React.FC<NPPanelProps> = ({ user, onSelectPatient }) => {
                     {patient.name.charAt(0)}
                   </div>
                   <div>
-                    <h3 className="font-bold text-slate-800">{maskName(patient.name)} <span className="text-slate-400 font-normal text-sm ml-2">({calculateAge(patient.birthYearROC)}歲 / {patient.gender === 'male' ? '男' : '女'})</span></h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-slate-800">{maskName(patient.name)} <span className="text-slate-400 font-normal text-sm ml-1">({calculateAge(patient.birthYearROC)}歲 / {patient.gender === 'male' ? '男' : '女'})</span></h3>
+                      <div className="flex gap-1">
+                        {patient.hasDisabilityCertificate && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold">身障</span>}
+                        {patient.hasCatastrophicIllnessCard && <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">重大</span>}
+                      </div>
+                    </div>
                     <p className="text-xs text-slate-500">
                       病房: {patient.ward || '-'} | 床號: {patient.bed || '-'}
                       {patient.admissionDate && ` | 住院: 民國 ${patient.admissionDate.year}/${patient.admissionDate.month}/${patient.admissionDate.day}`}
