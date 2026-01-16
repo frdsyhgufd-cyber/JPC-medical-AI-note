@@ -1,11 +1,135 @@
 
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MSEData } from '../types';
 
 interface Props {
   data?: MSEData;
   onChange: (data: MSEData) => void;
 }
+
+// 將輔助組件移出主組件外，防止 Re-mount 導致的輸入中斷
+const SectionTitle = ({ text }: { text: string }) => (
+  <h4 className="bg-slate-100 p-2 font-bold text-sm mb-3 rounded text-slate-700 border-l-4 border-blue-500">{text}</h4>
+);
+
+const SingleSelect = ({ options, value, onSelect, otherValue, onOtherChange }: any) => {
+  const isComposing = useRef(false);
+  const [localOther, setLocalOther] = useState(otherValue || '');
+
+  useEffect(() => {
+    if (!isComposing.current) setLocalOther(otherValue || '');
+  }, [otherValue]);
+
+  const handleTextChange = (val: string) => {
+    setLocalOther(val);
+    if (!isComposing.current && onOtherChange) {
+      onOtherChange(val);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap gap-x-6 gap-y-2 mb-4">
+      {options.map((opt: string) => (
+        <label key={opt} className="flex items-center gap-2 text-sm cursor-pointer select-none">
+          <input type="radio" checked={value === opt} onChange={() => onSelect(opt)} /> {opt}
+        </label>
+      ))}
+      {onOtherChange && (
+        <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+          <input type="radio" checked={value === 'others'} onChange={() => onSelect('others')} /> 其他:
+          {value === 'others' && (
+            <input 
+              className="border-b outline-none ml-1 text-sm p-1 focus:border-blue-500" 
+              value={localOther} 
+              onCompositionStart={() => { isComposing.current = true; }}
+              onCompositionEnd={(e) => {
+                isComposing.current = false;
+                handleTextChange(e.currentTarget.value);
+              }}
+              onChange={(e) => handleTextChange(e.target.value)} 
+            />
+          )}
+        </label>
+      )}
+    </div>
+  );
+};
+
+const MultiSelect = ({ options, values, onToggle, otherValue, onOtherChange, excludeMap = {} }: any) => {
+  const currentValues = Array.isArray(values) ? values : (values ? [values] : []);
+  const isComposing = useRef(false);
+  const [localOther, setLocalOther] = useState(otherValue || '');
+
+  useEffect(() => {
+    if (!isComposing.current) setLocalOther(otherValue || '');
+  }, [otherValue]);
+
+  const handleTextChange = (val: string) => {
+    setLocalOther(val);
+    if (!isComposing.current && onOtherChange) {
+      onOtherChange(val);
+    }
+  };
+  
+  return (
+    <div className="flex flex-wrap gap-x-6 gap-y-2 mb-4">
+      {options.map((opt: string) => (
+        <label key={opt} className="flex items-center gap-2 text-sm cursor-pointer select-none">
+          <input 
+            type="checkbox" 
+            checked={currentValues.includes(opt)} 
+            onChange={() => {
+              let next = currentValues.includes(opt) 
+                ? currentValues.filter((v: any) => v !== opt) 
+                : [...currentValues, opt];
+              
+              if (!currentValues.includes(opt)) {
+                if (excludeMap[opt]) {
+                  next = [opt];
+                } else {
+                  Object.keys(excludeMap).forEach(key => {
+                    if (next.includes(key)) next = next.filter((v: any) => v !== key);
+                  });
+                }
+              }
+              onToggle(next);
+            }} 
+          /> {opt}
+        </label>
+      ))}
+      {onOtherChange && (
+        <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+          <input 
+            type="checkbox" 
+            checked={currentValues.includes('others')} 
+            onChange={() => {
+              const isAdding = !currentValues.includes('others');
+              let next = isAdding ? [...currentValues, 'others'] : currentValues.filter((v: any) => v !== 'others');
+              if (isAdding) {
+                Object.keys(excludeMap).forEach(key => {
+                  if (next.includes(key)) next = next.filter((v: any) => v !== key);
+                });
+              }
+              onToggle(next);
+            }} 
+          /> 其他:
+          {currentValues.includes('others') && (
+            <input 
+              className="border-b outline-none ml-1 text-sm p-1 focus:border-blue-500" 
+              value={localOther}
+              onCompositionStart={() => { isComposing.current = true; }}
+              onCompositionEnd={(e) => {
+                isComposing.current = false;
+                handleTextChange(e.currentTarget.value);
+              }}
+              onChange={(e) => handleTextChange(e.target.value)} 
+            />
+          )}
+        </label>
+      )}
+    </div>
+  );
+};
 
 const MSEForm: React.FC<Props> = ({ data, onChange }) => {
   const defaultMSE: MSEData = {
@@ -21,88 +145,6 @@ const MSEForm: React.FC<Props> = ({ data, onChange }) => {
   };
 
   const current = data || defaultMSE;
-
-  // 輔助函式：確保資料是陣列（處理舊資料遷移）
-  const ensureArray = (val: any) => Array.isArray(val) ? val : (val ? [val] : []);
-
-  const SectionTitle = ({ text }: { text: string }) => <h4 className="bg-slate-100 p-2 font-bold text-sm mb-3 rounded text-slate-700 border-l-4 border-blue-500">{text}</h4>;
-
-  const SingleSelect = ({ options, value, onSelect, otherValue, onOtherChange }: any) => (
-    <div className="flex flex-wrap gap-x-6 gap-y-2 mb-4">
-      {options.map((opt: string) => (
-        <label key={opt} className="flex items-center gap-2 text-sm cursor-pointer select-none">
-          <input type="radio" checked={value === opt} onChange={() => onSelect(opt)} /> {opt}
-        </label>
-      ))}
-      {onOtherChange && (
-        <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-          <input type="radio" checked={value === 'others'} onChange={() => onSelect('others')} /> 其他:
-          {value === 'others' && (
-            <input className="border-b outline-none ml-1 text-sm p-1 focus:border-blue-500" value={otherValue || ''} onChange={(e) => onOtherChange(e.target.value)} />
-          )}
-        </label>
-      )}
-    </div>
-  );
-
-  const MultiSelect = ({ options, values, onToggle, otherValue, onOtherChange, excludeMap = {} }: any) => {
-    const currentValues = ensureArray(values);
-    
-    return (
-      <div className="flex flex-wrap gap-x-6 gap-y-2 mb-4">
-        {options.map((opt: string) => (
-          <label key={opt} className="flex items-center gap-2 text-sm cursor-pointer select-none">
-            <input 
-              type="checkbox" 
-              checked={currentValues.includes(opt)} 
-              onChange={() => {
-                let next = currentValues.includes(opt) 
-                  ? currentValues.filter((v: any) => v !== opt) 
-                  : [...currentValues, opt];
-                
-                // 互斥邏輯
-                if (!currentValues.includes(opt)) {
-                  if (excludeMap[opt]) {
-                    // 如果勾選的是互斥項，清除所有其他項
-                    next = [opt];
-                  } else {
-                    // 如果勾選的是普通項，清除所有互斥項
-                    Object.keys(excludeMap).forEach(key => {
-                      if (next.includes(key)) next = next.filter((v: any) => v !== key);
-                    });
-                  }
-                }
-                onToggle(next);
-              }} 
-            /> {opt}
-          </label>
-        ))}
-        {onOtherChange && (
-          <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-            <input 
-              type="checkbox" 
-              checked={currentValues.includes('others')} 
-              onChange={() => {
-                const isAdding = !currentValues.includes('others');
-                let next = isAdding ? [...currentValues, 'others'] : currentValues.filter((v: any) => v !== 'others');
-                
-                // 勾選其他時也要清除互斥項
-                if (isAdding) {
-                  Object.keys(excludeMap).forEach(key => {
-                    if (next.includes(key)) next = next.filter((v: any) => v !== key);
-                  });
-                }
-                onToggle(next);
-              }} 
-            /> 其他:
-            {currentValues.includes('others') && (
-              <input className="border-b outline-none ml-1 text-sm p-1 focus:border-blue-500" value={otherValue || ''} onChange={(e) => onOtherChange(e.target.value)} />
-            )}
-          </label>
-        )}
-      </div>
-    );
-  };
 
   return (
     <div className="space-y-6">
