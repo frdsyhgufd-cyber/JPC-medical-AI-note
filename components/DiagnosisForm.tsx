@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DiagnosisData } from '../types';
 
 interface Props {
@@ -15,6 +15,23 @@ const DiagnosisForm: React.FC<Props> = ({ data, onChange }) => {
     medicalOther: ''
   };
 
+  const isComposing = useRef(false);
+  const [localPsychOther, setLocalPsychOther] = useState(currentData.psychiatricOther || '');
+  const [localMedOther, setLocalMedOther] = useState(currentData.medicalOther || '');
+
+  // 當外部資料更新時同步本地狀態
+  useEffect(() => {
+    if (!isComposing.current) {
+      setLocalPsychOther(currentData.psychiatricOther || '');
+    }
+  }, [currentData.psychiatricOther]);
+
+  useEffect(() => {
+    if (!isComposing.current) {
+      setLocalMedOther(currentData.medicalOther || '');
+    }
+  }, [currentData.medicalOther]);
+
   const psychList = [
     'Schizophrenia', 'Bipolar disorder', 'Major depressive disorder',
     'Dementia (Major neurocognitive disorder)', 'Organic mental disorder',
@@ -25,6 +42,20 @@ const DiagnosisForm: React.FC<Props> = ({ data, onChange }) => {
 
   const toggle = (list: string[], val: string) => {
     return list.includes(val) ? list.filter(v => v !== val) : [...list, val];
+  };
+
+  const handlePsychOtherChange = (val: string) => {
+    setLocalPsychOther(val);
+    if (!isComposing.current) {
+      onChange({...currentData, psychiatricOther: val});
+    }
+  };
+
+  const handleMedOtherChange = (val: string) => {
+    setLocalMedOther(val);
+    if (!isComposing.current) {
+      onChange({...currentData, medicalOther: val});
+    }
   };
 
   return (
@@ -52,8 +83,13 @@ const DiagnosisForm: React.FC<Props> = ({ data, onChange }) => {
             {currentData.psychiatric.includes('others') && (
               <input 
                 className="flex-1 ml-2 border-b text-sm focus:border-blue-500 outline-none"
-                value={currentData.psychiatricOther}
-                onChange={(e) => onChange({...currentData, psychiatricOther: e.target.value})}
+                value={localPsychOther}
+                onCompositionStart={() => { isComposing.current = true; }}
+                onCompositionEnd={(e) => {
+                  isComposing.current = false;
+                  handlePsychOtherChange(e.currentTarget.value);
+                }}
+                onChange={(e) => handlePsychOtherChange(e.target.value)}
               />
             )}
           </label>
@@ -83,8 +119,13 @@ const DiagnosisForm: React.FC<Props> = ({ data, onChange }) => {
             {currentData.medical.includes('others') && (
               <input 
                 className="flex-1 ml-2 border-b text-sm focus:border-blue-500 outline-none"
-                value={currentData.medicalOther}
-                onChange={(e) => onChange({...currentData, medicalOther: e.target.value})}
+                value={localMedOther}
+                onCompositionStart={() => { isComposing.current = true; }}
+                onCompositionEnd={(e) => {
+                  isComposing.current = false;
+                  handleMedOtherChange(e.currentTarget.value);
+                }}
+                onChange={(e) => handleMedOtherChange(e.target.value)}
               />
             )}
           </label>
@@ -95,4 +136,3 @@ const DiagnosisForm: React.FC<Props> = ({ data, onChange }) => {
 };
 
 export default DiagnosisForm;
-
