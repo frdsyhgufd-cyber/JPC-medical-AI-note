@@ -1,11 +1,78 @@
 
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PEData } from '../types';
 
 interface Props {
   data?: PEData;
   onChange: (data: PEData) => void;
 }
+
+const SectionTitle = ({ text }: { text: string }) => (
+  <h4 className="bg-slate-50 p-2 font-bold text-xs mb-3 rounded text-slate-600 border-l-4 border-emerald-500 tracking-wider">
+    {text}
+  </h4>
+);
+
+const MultiSelect = ({ options, values, onToggle, otherValue, onOtherChange }: any) => {
+  const currentValues = Array.isArray(values) ? values : (values ? [values] : []);
+  const isComposing = useRef(false);
+  const [localOther, setLocalOther] = useState(otherValue || '');
+
+  useEffect(() => {
+    if (!isComposing.current) setLocalOther(otherValue || '');
+  }, [otherValue]);
+
+  const handleTextChange = (val: string) => {
+    setLocalOther(val);
+    if (!isComposing.current && onOtherChange) {
+      onOtherChange(val);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap gap-x-6 gap-y-2 mb-4">
+      {options.map((opt: string) => (
+        <label key={opt} className="flex items-center gap-2 text-sm cursor-pointer select-none">
+          <input 
+            type="checkbox" 
+            checked={currentValues.includes(opt)} 
+            onChange={() => {
+              const next = currentValues.includes(opt) 
+                ? currentValues.filter((v: any) => v !== opt) 
+                : [...currentValues, opt];
+              onToggle(next);
+            }} 
+          /> {opt}
+        </label>
+      ))}
+      <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+        <input 
+          type="checkbox" 
+          checked={currentValues.includes('others')} 
+          onChange={() => {
+            const next = currentValues.includes('others') 
+              ? currentValues.filter((v: any) => v !== 'others') 
+              : [...currentValues, 'others'];
+            onToggle(next);
+          }} 
+        /> 其他:
+        {currentValues.includes('others') && (
+          <input 
+            className="border-b outline-none ml-1 text-sm p-1 focus:border-emerald-500 w-32" 
+            value={localOther} 
+            onCompositionStart={() => { isComposing.current = true; }}
+            onCompositionEnd={(e) => {
+              isComposing.current = false;
+              handleTextChange(e.currentTarget.value);
+            }}
+            onChange={(e) => handleTextChange(e.target.value)} 
+            onClick={(e) => e.stopPropagation()}
+          />
+        )}
+      </label>
+    </div>
+  );
+};
 
 const PEForm: React.FC<Props> = ({ data, onChange }) => {
   const defaultPE: PEData = {
@@ -14,56 +81,6 @@ const PEForm: React.FC<Props> = ({ data, onChange }) => {
   };
 
   const current = data || defaultPE;
-
-  const ensureArray = (val: any) => Array.isArray(val) ? val : (val ? [val] : []);
-
-  const SectionTitle = ({ text }: { text: string }) => (
-    <h4 className="bg-slate-50 p-2 font-bold text-xs mb-3 rounded text-slate-600 border-l-4 border-emerald-500 tracking-wider">
-      {text}
-    </h4>
-  );
-
-  const MultiSelect = ({ options, values, onToggle, otherValue, onOtherChange }: any) => {
-    const currentValues = ensureArray(values);
-    return (
-      <div className="flex flex-wrap gap-x-6 gap-y-2 mb-4">
-        {options.map((opt: string) => (
-          <label key={opt} className="flex items-center gap-2 text-sm cursor-pointer select-none">
-            <input 
-              type="checkbox" 
-              checked={currentValues.includes(opt)} 
-              onChange={() => {
-                const next = currentValues.includes(opt) 
-                  ? currentValues.filter((v: any) => v !== opt) 
-                  : [...currentValues, opt];
-                onToggle(next);
-              }} 
-            /> {opt}
-          </label>
-        ))}
-        <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-          <input 
-            type="checkbox" 
-            checked={currentValues.includes('others')} 
-            onChange={() => {
-              const next = currentValues.includes('others') 
-                ? currentValues.filter((v: any) => v !== 'others') 
-                : [...currentValues, 'others'];
-              onToggle(next);
-            }} 
-          /> 其他:
-          {currentValues.includes('others') && (
-            <input 
-              className="border-b outline-none ml-1 text-sm p-1 focus:border-emerald-500 w-32" 
-              value={otherValue || ''} 
-              onChange={(e) => onOtherChange(e.target.value)} 
-              onClick={(e) => e.stopPropagation()}
-            />
-          )}
-        </label>
-      </div>
-    );
-  };
 
   return (
     <div className="space-y-2">
