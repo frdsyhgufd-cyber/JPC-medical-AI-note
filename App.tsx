@@ -68,7 +68,8 @@ const App: React.FC = () => {
               當前使用者: {currentUser.name} ({
                 currentUser.role === UserRole.ADMIN ? '管理員' : 
                 currentUser.role === UserRole.NP ? '專科護理師' :
-                currentUser.role === UserRole.RESIDENT ? '住院醫師' : '醫師助理'
+                currentUser.role === UserRole.RESIDENT ? '住院醫師' : 
+                currentUser.role === UserRole.FELLOW ? '研究員' : '醫師助理'
               })
             </span>
             <button 
