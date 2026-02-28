@@ -62,8 +62,21 @@ const NPPanel: React.FC<NPPanelProps> = ({ user, onSelectPatient }) => {
 
   const sortedPatients = useMemo(() => {
     return [...patients].sort((a, b) => {
-      if (a.ward && b.ward && a.ward !== b.ward) return a.ward.localeCompare(b.ward);
-      if (a.bed && b.bed && a.bed !== b.bed) return a.bed.localeCompare(b.bed);
+      // 先比病房 (Ward)
+      const wardA = a.ward || '';
+      const wardB = b.ward || '';
+      if (wardA !== wardB) {
+        return wardA.localeCompare(wardB, 'zh-Hant-TW', { numeric: true });
+      }
+      
+      // 病房相同，再比床號 (Bed)
+      const bedA = a.bed || '';
+      const bedB = b.bed || '';
+      if (bedA !== bedB) {
+        return bedA.localeCompare(bedB, 'zh-Hant-TW', { numeric: true });
+      }
+      
+      // 病房與床號皆相同，最後比姓名
       return a.name.localeCompare(b.name, 'zh-Hant-TW');
     });
   }, [patients]);
