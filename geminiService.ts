@@ -78,9 +78,9 @@ export const generateMedicalNote = async (
   referenceNotes: MedicalRecord[] = [],
   extraInfo: string = ''
 ) => {
-  const apiKey = process.env.API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'undefined' || apiKey.length < 10) {
-    return "⚠️ 系統錯誤：未偵測到 API 金鑰，請檢查 Netlify 設定。";
+    return "⚠️ 系統錯誤：未偵測到 API 金鑰，請確認環境變數設定。";
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -112,12 +112,13 @@ export const generateMedicalNote = async (
     case RecordType.PROGRESS_NOTE:
       formatInstruction = `
 【格式要求】
-1. 採用 SOAP 格式。
-2. S: 描述病患主觀訴求。
-3. O: 簡短摘要 MSE 與 PE/NE。
-4. A: 僅列出精神科與內外科診斷，禁止補充說明。
-5. P: 列出 3-5 點治療計畫。
-6. 【重要】在 P 之後換行，新增區塊「主治醫師評語與建議」，內容應根據病患風險與現況提供臨床照護提醒（如預防跌倒、副作用觀察等）。`;
+1. 第一行必須是：Progress Note
+2. 採用 SOAP 格式。
+3. S: 描述病患主觀訴求。
+4. O: 簡短摘要 MSE 與 PE/NE。
+5. A: 僅列出精神科與內外科診斷，禁止補充說明。
+6. P: 列出 3-5 點治療計畫。
+7. 【重要】在 P 之後換行，新增區塊「主治醫師評語與建議：」，內容應根據病患風險與現況提供臨床照護提醒（如預防跌倒、副作用觀察等）。`;
       break;
     case RecordType.SUPPORTIVE_PSYCHOTHERAPY:
       formatInstruction = `
@@ -168,7 +169,8 @@ export const generateMedicalNote = async (
 3. 證據基礎：所有推論必須基於提供的 MSE/PE 資料。
 4. 內容多樣性：新紀錄必須與前次紀錄有 30% 以上的差異化。
 5. 字數限制：${needsLengthLimit ? '總字數禁止超過 400 個中文字。' : ''}
-6. 禁止使用粗體語法 (**)。`;
+6. 禁止使用粗體語法 (**)。
+7. 住院病患專用：本系統僅用於住院紀錄，嚴禁出現「門診」、「看診」或任何暗示病患目前在門診就醫的內容。`;
 
   const promptText = `
 【病患現況】
