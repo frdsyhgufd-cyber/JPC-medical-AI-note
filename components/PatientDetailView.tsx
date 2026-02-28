@@ -12,24 +12,26 @@ import {
   getDocs, 
   deleteDoc
 } from 'firebase/firestore';
-import { Patient, RecordType, MedicalRecord } from '../types';
+import { Patient, RecordType, MedicalRecord, User } from '../types';
 import { generateMedicalNote } from '../geminiService';
 import DiagnosisForm from './DiagnosisForm';
 import MSEForm from './MSEForm';
 import PEForm from './PEForm';
 
-const PatientDetailView: React.FC<{ patientId: string; onBack: () => void }> = ({ patientId, onBack }) => {
+const PatientDetailView: React.FC<{ patientId: string; user: User; onBack: () => void }> = ({ patientId, user, onBack }) => {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [records, setRecords] = useState<MedicalRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [selectedTypes, setSelectedTypes] = useState<RecordType[]>([]);
   const [showBackgroundModal, setShowBackgroundModal] = useState(false);
   const [backgroundTemp, setBackgroundTemp] = useState('');
   const [openRecords, setOpenRecords] = useState<string[]>([]);
   
   const recordRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
-  const [promptConfig, setPromptConfig] = useState<{ type: RecordType, title: string, placeholder: string, defaultValue: string } | null>(null);
-  const [promptInput, setPromptInput] = useState('');
+  const [showBatchPrompt, setShowBatchPrompt] = useState(false);
+  const [offDutyInput, setOffDutyInput] = useState('急性病房轉至復健病房繼續治療');
+  const [dischargeInput, setDischargeInput] = useState('返家並門診追蹤');
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   const fetchRecords = useCallback(async () => {
@@ -74,52 +76,91 @@ const PatientDetailView: React.FC<{ patientId: string; onBack: () => void }> = (
     }
   };
 
-  const handleGenerate = async (type: RecordType) => {
-    if (!patient || aiGenerating) return;
-    if (type === RecordType.OFF_DUTY_SUMMARY) {
-      setPromptConfig({ type, title: "Off Duty note 原因", placeholder: "例如：急性病房轉至復健病房繼續治療", defaultValue: "急性病房轉至復健病房繼續治療" });
-      setPromptInput("急性病房轉至復健病房繼續治療");
-      return;
-    } else if (type === RecordType.DISCHARGE_NOTE) {
-      setPromptConfig({ type, title: "Discharge 安置計畫", placeholder: "例如：返家並門診追蹤", defaultValue: "返家並門診追蹤" });
-      setPromptInput("返家並門診追蹤");
-      return;
-    }
-    startAiProcess(type, '');
+  const toggleType = (type: RecordType) => {
+    setSelectedTypes(prev => 
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
   };
 
-  const startAiProcess = async (type: RecordType, extraInfo: string) => {
+  const handleBatchGenerate = () => {
+    if (selectedTypes.length === 0 || aiGenerating) return;
+    
+    const needsOffDuty = selectedTypes.includes(RecordType.OFF_DUTY_SUMMARY);
+    const needsDischarge = selectedTypes.includes(RecordType.DISCHARGE_NOTE);
+    
+    if (needsOffDuty || needsDischarge) {
+      setShowBatchPrompt(true);
+    } else {
+      startAiProcess(selectedTypes, {
+        [RecordType.OFF_DUTY_SUMMARY]: '',
+        [RecordType.DISCHARGE_NOTE]: ''
+      });
+    }
+  };
+
+  const startAiProcess = async (types: RecordType[], inputs: { [key: string]: string }) => {
     const allProgressNotes = records.filter(r => r.type === RecordType.PROGRESS_NOTE).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     
-    const isSummaryType = [RecordType.WEEKLY_SUMMARY, RecordType.MONTHLY_SUMMARY, RecordType.OFF_DUTY_SUMMARY, RecordType.DISCHARGE_NOTE].includes(type);
-    
-    if (isSummaryType && allProgressNotes.length === 0) {
-      alert("⚠️ 素材不足：查無病程紀錄。");
-      return;
-    }
-
-    let referenceContext: MedicalRecord[] = [];
-    if (isSummaryType) {
-      if (type === RecordType.WEEKLY_SUMMARY) {
-        referenceContext = allProgressNotes.slice(-5);
-      } else if (type === RecordType.MONTHLY_SUMMARY) {
-        referenceContext = allProgressNotes.slice(-25);
-      } else {
-        referenceContext = allProgressNotes;
-      }
-    } else {
-      referenceContext = records.filter(r => r.type === type).slice(0, 3);
-    }
-
     setAiGenerating(true);
     try {
-      const content = await generateMedicalNote(patient!, type, referenceContext, extraInfo);
-      if (content.startsWith("⚠️")) {
-        alert(content);
-        return;
+      let combinedContent = "";
+      const combinedType = types.join(" + ");
+
+      for (let i = 0; i < types.length; i++) {
+        const type = types[i];
+        const extraInfo = inputs[type] || "";
+        
+        const isSummaryType = [RecordType.WEEKLY_SUMMARY, RecordType.MONTHLY_SUMMARY, RecordType.OFF_DUTY_SUMMARY, RecordType.DISCHARGE_NOTE].includes(type);
+        
+        if (isSummaryType && allProgressNotes.length === 0) {
+          throw new Error(`⚠️ 素材不足：查無病程紀錄，無法生成 ${type}。`);
+        }
+
+        let referenceContext: MedicalRecord[] = [];
+        if (isSummaryType) {
+          if (type === RecordType.WEEKLY_SUMMARY) {
+            referenceContext = allProgressNotes.slice(-5);
+          } else if (type === RecordType.MONTHLY_SUMMARY) {
+            referenceContext = allProgressNotes.slice(-25);
+          } else {
+            referenceContext = allProgressNotes;
+          }
+        } else {
+          referenceContext = records.filter(r => r.type === type).slice(0, 3);
+        }
+
+        let content = await generateMedicalNote(patient!, type, referenceContext, extraInfo);
+        if (content.startsWith("⚠️")) {
+          throw new Error(content);
+        }
+
+        // 附加輔助紀錄者資訊
+        const helperLine = `輔助紀錄者：${user.name}`;
+        if (type === RecordType.PROGRESS_NOTE) {
+          const target = "主治醫師評語與建議：";
+          if (content.includes(target)) {
+            content = content.replace(target, `\n${helperLine}\n\n${target}`);
+          } else {
+            content += `\n\n${helperLine}`;
+          }
+        } else {
+          content += `\n\n${helperLine}`;
+        }
+
+        combinedContent += content;
+        if (i < types.length - 1) {
+          combinedContent += "\n\n" + "=".repeat(30) + "\n\n";
+        }
       }
-      await addDoc(collection(db, 'records'), { patientId, type, content, createdAt: new Date().toISOString() });
+
+      await addDoc(collection(db, 'records'), { 
+        patientId, 
+        type: combinedType, 
+        content: combinedContent, 
+        createdAt: new Date().toISOString() 
+      });
       await fetchRecords(); 
+      setSelectedTypes([]);
     } catch (err: any) {
       alert(`紀錄生成失敗：${err.message}`);
     } finally {
@@ -224,25 +265,41 @@ const PatientDetailView: React.FC<{ patientId: string; onBack: () => void }> = (
               <h3 className="text-lg font-bold">生成紀錄</h3>
               <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full font-bold">AI 輔助</span>
             </div>
-            <div className="grid grid-cols-1 gap-2">
+            <div className="space-y-2">
               {orderedRecordTypes.map(type => (
-                <button 
+                <label 
                   key={type} 
-                  disabled={aiGenerating} 
-                  onClick={() => handleGenerate(type)} 
-                  className={`p-3 border rounded-lg text-sm font-bold text-left transition ${
-                    aiGenerating ? 'opacity-40 cursor-not-allowed bg-slate-100' : 'hover:bg-opacity-80 active:scale-95'
-                  } ${
-                    type === RecordType.PROGRESS_NOTE 
-                      ? 'bg-blue-600 text-white border-blue-700' 
-                      : (type === RecordType.OFF_DUTY_SUMMARY || type === RecordType.DISCHARGE_NOTE)
-                        ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm'
-                        : 'bg-blue-50 text-blue-700 border-blue-100'
+                  className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition ${
+                    selectedTypes.includes(type) ? 'bg-blue-50 border-blue-300' : 'hover:bg-slate-50'
                   }`}
                 >
-                  {type === RecordType.OFF_DUTY_SUMMARY ? 'Off Duty note' : type}
-                </button>
+                  <input 
+                    type="checkbox" 
+                    checked={selectedTypes.includes(type)}
+                    onChange={() => toggleType(type)}
+                    disabled={aiGenerating}
+                    className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <span className={`text-sm font-bold ${
+                    type === RecordType.PROGRESS_NOTE ? 'text-blue-700' : 
+                    (type === RecordType.OFF_DUTY_SUMMARY || type === RecordType.DISCHARGE_NOTE) ? 'text-indigo-700' : 'text-slate-700'
+                  }`}>
+                    {type === RecordType.OFF_DUTY_SUMMARY ? 'Off Duty note' : type}
+                  </span>
+                </label>
               ))}
+              
+              <button 
+                disabled={selectedTypes.length === 0 || aiGenerating} 
+                onClick={handleBatchGenerate} 
+                className={`w-full mt-4 p-4 rounded-xl text-white font-bold shadow-lg transition transform active:scale-95 ${
+                  selectedTypes.length === 0 || aiGenerating 
+                    ? 'bg-slate-300 cursor-not-allowed' 
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                {aiGenerating ? '紀錄生成中...' : `開始生成勾選紀錄 (${selectedTypes.length})`}
+              </button>
             </div>
             {aiGenerating && <div className="mt-4 p-3 bg-yellow-50 text-yellow-700 rounded-lg text-sm animate-pulse text-center font-bold border border-yellow-200">紀錄生成中....</div>}
           </section>
@@ -291,14 +348,49 @@ const PatientDetailView: React.FC<{ patientId: string; onBack: () => void }> = (
         </div>
       )}
 
-      {promptConfig && (
+      {showBatchPrompt && (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-[250] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border-t-8 border-indigo-600 text-center">
-            <h3 className="text-xl font-bold mb-4">{promptConfig.title}</h3>
-            <textarea className="w-full h-32 p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm mb-4" value={promptInput} onChange={(e) => setPromptInput(e.target.value)} placeholder={promptConfig.placeholder} />
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border-t-8 border-indigo-600">
+            <h3 className="text-xl font-bold mb-4 text-center">補充生成資訊</h3>
+            
+            {selectedTypes.includes(RecordType.OFF_DUTY_SUMMARY) && (
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-slate-700 mb-1">Off Duty note 原因</label>
+                <textarea 
+                  className="w-full h-24 p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm" 
+                  value={offDutyInput} 
+                  onChange={(e) => setOffDutyInput(e.target.value)} 
+                  placeholder="例如：急性病房轉至復健病房繼續治療" 
+                />
+              </div>
+            )}
+
+            {selectedTypes.includes(RecordType.DISCHARGE_NOTE) && (
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-slate-700 mb-1">Discharge 安置計畫</label>
+                <textarea 
+                  className="w-full h-24 p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm" 
+                  value={dischargeInput} 
+                  onChange={(e) => setDischargeInput(e.target.value)} 
+                  placeholder="例如：返家並門診追蹤" 
+                />
+              </div>
+            )}
+
             <div className="flex gap-3">
-              <button onClick={() => setPromptConfig(null)} className="flex-1 py-2.5 border rounded-xl font-bold text-slate-600 hover:bg-slate-50">取消</button>
-              <button onClick={() => { const type = promptConfig.type; const input = promptInput; setPromptConfig(null); startAiProcess(type, input); }} className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-md">開始生成</button>
+              <button onClick={() => setShowBatchPrompt(false)} className="flex-1 py-2.5 border rounded-xl font-bold text-slate-600 hover:bg-slate-50">取消</button>
+              <button 
+                onClick={() => { 
+                  setShowBatchPrompt(false); 
+                  startAiProcess(selectedTypes, {
+                    [RecordType.OFF_DUTY_SUMMARY]: offDutyInput,
+                    [RecordType.DISCHARGE_NOTE]: dischargeInput
+                  }); 
+                }} 
+                className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-md"
+              >
+                開始生成
+              </button>
             </div>
           </div>
         </div>
