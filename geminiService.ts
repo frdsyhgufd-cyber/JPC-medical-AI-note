@@ -10,7 +10,7 @@ const getFullDiagnosisList = (list: string[] | undefined, otherText: string | un
 };
 
 const formatMSEData = (mse: any) => {
-  if (!mse) return "尚未進行 MSE 評估。";
+  if (!mse) return "無特定異常紀錄，請參考臨床重點。";
   
   const formatValue = (val: any, other: string | undefined) => {
     if (val === 'others') return other || '其他';
@@ -61,7 +61,7 @@ const formatMSEData = (mse: any) => {
 };
 
 const formatPEData = (pe: any) => {
-  if (!pe) return "無異常。";
+  if (!pe) return "無異常紀錄，請參考臨床重點。";
   const formatValue = (val: any, other: string | undefined) => {
     if (!val || (Array.isArray(val) && val.length === 0)) return '無特定異常';
     if (Array.isArray(val)) return val.join(', ');
@@ -119,6 +119,13 @@ export const generateMedicalNote = async (
 5. A: 僅列出精神科與內外科診斷，禁止補充說明。
 6. P: 列出 3-5 點治療計畫。
 7. 【重要】在 P 之後換行，新增區塊「主治醫師評語與建議：」，內容應根據病患風險與現況提供臨床照護提醒（如預防跌倒、副作用觀察等）。`;
+      break;
+    case RecordType.PHYSIO_PSYCHO_EXAM:
+      formatInstruction = `
+【格式要求】僅包含下列兩個段落：
+1. 理學檢查：簡要描述 PE/NE 評估結果。若無具體異常資料，請描述為「意識清楚，神經學檢查無明顯局部病徵」。
+2. 精神狀態評估：根據 MSE 資料進行專業描述。若 MSE 資料不全，請務必結合「臨床重點」所提供的行為觀察與主觀訴求進行推論描述，嚴禁出現「尚未完成評估」或「資料不足」等字眼，但仍須遵守不虛構原則。
+(注意：禁止出現「診斷與病史」或「臨床評估與計畫」段落)`;
       break;
     case RecordType.SUPPORTIVE_PSYCHOTHERAPY:
       formatInstruction = `
