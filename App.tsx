@@ -96,7 +96,7 @@ const App: React.FC = () => {
           />
         )}
 
-        {view === 'PATIENT_DETAIL' && selectedPatientId && (
+        {view === 'PATIENT_DETAIL' && selectedPatientId && currentUser && (
           <div className="space-y-4">
             <button 
               onClick={() => setView('DASHBOARD')}
@@ -106,6 +106,7 @@ const App: React.FC = () => {
             </button>
             <PatientDetailView 
               patientId={selectedPatientId} 
+              user={currentUser}
               onBack={() => setView('DASHBOARD')} 
             />
           </div>
