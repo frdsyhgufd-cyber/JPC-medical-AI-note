@@ -102,7 +102,7 @@ export enum RecordType {
 export interface MedicalRecord {
   id: string;
   patientId: string;
-  type: RecordType;
+  type: RecordType | string;
   content: string;
   createdAt: string; 
 }
