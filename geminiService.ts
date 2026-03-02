@@ -62,14 +62,26 @@ const formatMSEData = (mse: any) => {
 
 const formatPEData = (pe: any) => {
   if (!pe) return "無異常紀錄，請參考臨床重點。";
+  
   const formatValue = (val: any, other: string | undefined) => {
     if (!val || (Array.isArray(val) && val.length === 0)) return '無特定異常';
-    if (Array.isArray(val)) return val.join(', ');
-    return val;
+    if (Array.isArray(val)) {
+      return val.map(v => v === 'others' ? (other || '其他') : v).join(', ');
+    }
+    return val === 'others' ? (other || '其他') : val;
   };
-  return `意識: ${formatValue(pe.conscious, pe.consciousOther)}, 
-          神經學: ${formatValue(pe.ne, pe.neOther)}, 
-          其餘系統: 正常`;
+
+  const sections = [];
+  sections.push(`意識: ${formatValue(pe.conscious, pe.consciousOther)}`);
+  sections.push(`HEENT: ${formatValue(pe.heent, pe.heentOther)}`);
+  sections.push(`胸部: ${formatValue(pe.chest, pe.chestOther)}`);
+  sections.push(`心臟: ${formatValue(pe.heart, pe.heartOther)}`);
+  sections.push(`腹部: ${formatValue(pe.abdominal, pe.abdominalOther)}`);
+  sections.push(`四肢: ${formatValue(pe.extremities, pe.extremitiesOther)}`);
+  sections.push(`皮膚: ${formatValue(pe.skin, pe.skinOther)}`);
+  sections.push(`神經學: ${formatValue(pe.ne, pe.neOther)}`);
+  
+  return sections.join(', ');
 };
 
 export const generateMedicalNote = async (
@@ -122,14 +134,18 @@ export const generateMedicalNote = async (
       break;
     case RecordType.PHYSIO_PSYCHO_EXAM:
       formatInstruction = `
-【格式要求】僅包含下列兩個段落：
-1. 理學檢查：簡要描述 PE/NE 評估結果。若無具體異常資料，請描述為「意識清楚，神經學檢查無明顯局部病徵」。
-2. 精神狀態評估：根據 MSE 資料進行專業描述。若 MSE 資料不全，請務必結合「臨床重點」所提供的行為觀察與主觀訴求進行推論描述，嚴禁出現「尚未完成評估」或「資料不足」等字眼，但仍須遵守不虛構原則。
+【格式要求】
+1. 第一行必須是：生理心理功能檢查紀錄
+2. 僅包含下列兩個段落：
+   - 理學檢查：簡要描述 PE/NE 評估結果。若無具體異常資料，請描述為「意識清楚，神經學檢查無明顯局部病徵」。
+   - 精神狀態評估：根據 MSE 資料進行專業描述。若 MSE 資料不全，請務必結合「臨床重點」所提供的行為觀察與主觀訴求進行推論描述，嚴禁出現「尚未完成評估」或「資料不足」等字眼，但仍須遵守不虛構原則。
 (注意：禁止出現「診斷與病史」或「臨床評估與計畫」段落)`;
       break;
     case RecordType.SUPPORTIVE_PSYCHOTHERAPY:
       formatInstruction = `
-【格式要求】必須採下列結構撰寫：
+【格式要求】
+1. 第一行必須是：支持性心理治療紀錄
+2. 必須採下列結構撰寫：
 治療目標：[具體目標，如建立關係或衛教]
 治療內容：[具體行動或衛教項目，若為過程請採 1. 2. 3. 條列]
 效果評估：[如 mild effect / effective / 可接受 / 穩定]
@@ -138,16 +154,18 @@ export const generateMedicalNote = async (
     case RecordType.PSYCHOTHERAPY:
       formatInstruction = `
 【特殊心理治療紀錄生成原則】
-1. 具體病徵描述：著重以具體例子說明個案狀況。例如個案的特定負向思考（如「我一點用處都沒有」、「大家都在針對我」）或其他具體臨床表現。
-2. 治療技巧運用：詳細紀錄使用的專業治療技巧（如認知行為治療 CBT 之認知重建、辯證行為治療之正念、或給予同理、情感反映等技巧）。
-3. 適應技能發展：描述如何協助病患發展新的適應技能（Adaptive skills），以改善其應對能力或心理功能。`;
+1. 第一行必須是：特殊心理治療紀錄
+2. 具體病徵描述：著重以具體例子說明個案狀況。例如個案的特定負向思考（如「我一點用處都沒有」、「大家都在針對我」）或其他具體臨床表現。
+3. 治療技巧運用：詳細紀錄使用的專業治療技巧（如認知行為治療 CBT 之認知重建、辯證行為治療之正念、或給予同理、情感反映等技巧）。
+4. 適應技能發展：描述如何協助病患發展新的適應技能（Adaptive skills），以改善其應對能力或心理功能。`;
       break;
     case RecordType.SPECIAL_HANDLING:
       formatInstruction = `
 【特別處理紀錄生成原則】
-1. 特別處理原因：重點記錄病患因精神症狀影響（如幻聽指示、嚴重妄想、情緒極度不穩），導致有攻擊他人或自傷之虞。請合理連結 MSE 中的欄位資訊（如衝動控制、被害妄想、易怒等）來強化此項處置的合理性。
-2. 處置內容：說明治療團隊必須提供密集的經常性照護，並採取必要之心理支持、行為引導或藥物調整，以避免危險行為發生。
-3. 若欄位內容與風險差異過大，則無需強行連結。`;
+1. 第一行必須是：精神科住院病人特別處理紀錄
+2. 特別處理原因：重點記錄病患因精神症狀影響（如幻聽指示、嚴重妄想、情緒極度不穩），導致有攻擊他人或自傷之虞。請合理連結 MSE 中的欄位資訊（如衝動控制、被害妄想、易怒等）來強化此項處置的合理性。
+3. 處置內容：說明治療團隊必須提供密集的經常性照護，並採取必要之心理支持、行為引導或藥物調整，以避免危險行為發生。
+4. 若欄位內容與風險差異過大，則無需強行連結。`;
       break;
     case RecordType.WEEKLY_SUMMARY:
     case RecordType.MONTHLY_SUMMARY:
